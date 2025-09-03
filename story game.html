@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Interactive Story Game</title>
+  <style>
+    :root{
+      --bg:#0f1724;
+      --card:#0b1220;
+      --accent:#7c3aed;
+      --muted:#94a3b8;
+      --glass: rgba(255,255,255,0.03);
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background: radial-gradient(1200px 600px at 10% 10%, rgba(124,58,237,0.12), transparent),
+                  linear-gradient(180deg,#021026 0%, #071225 100%);
+      color:#e6eef8;
+      font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      padding:32px;
+    }
+    .game {
+      width:100%;
+      max-width:900px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border-radius:var(--radius);
+      box-shadow: 0 8px 30px rgba(2,6,23,0.6);
+      overflow:hidden;
+      display:grid;
+      grid-template-columns: 1fr 340px;
+      gap:0;
+    }
+    @media (max-width:880px){
+      .game{grid-template-columns:1fr;}
+      .sidebar{order:2}
+    }
+
+    .main{
+      padding:28px;
+      background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent);
+      min-height:420px;
+    }
+    header{
+      display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;
+    }
+    h1{font-size:20px;margin:0}
+    .meta{color:var(--muted);font-size:13px}
+
+    .scene{
+      background:var(--glass);
+      border-radius:12px;
+      padding:20px;
+      min-height:180px;
+      display:flex;flex-direction:column;gap:14px;
+      transform-origin:center left;
+    }
+    .narration{line-height:1.6;font-size:16px}
+
+    .choices{display:flex;flex-direction:column;gap:10px;margin-top:auto}
+    .choice{
+      background:transparent;
+      border:1px solid rgba(255,255,255,0.06);
+      padding:12px 14px;border-radius:10px;
+      cursor:pointer;text-align:left;
+      transition:transform .12s ease, background .12s ease, box-shadow .12s ease;
+    }
+    .choice:hover{transform:translateY(-4px);box-shadow:0 6px 18px rgba(2,6,23,0.45)}
+    .choice:active{transform:translateY(-1px)}
+
+    .sidebar{
+      padding:22px;border-left:1px solid rgba(255,255,255,0.02);
+      background:linear-gradient(180deg, rgba(255,255,255,0.005), transparent);
+      min-height:420px;
+    }
+    .panel{background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));padding:12px;border-radius:10px;margin-bottom:12px}
+    .panel h3{margin:0 0 8px 0;font-size:13px}
+    .btn{display:inline-block;padding:8px 10px;border-radius:8px;background:var(--accent);color:white;text-decoration:none;border:none;cursor:pointer}
+    .small{font-size:13px;color:var(--muted)}
+
+    .history{max-height:220px;overflow:auto;padding:6px;display:flex;flex-direction:column;gap:6px}
+    .hist-item{font-size:13px;color:var(--muted);padding:6px;border-radius:8px}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+
+    footer{margin-top:14px;color:var(--muted);font-size:13px}
+
+
+    .title-badge{background:linear-gradient(90deg, rgba(255,255,255,0.03), rgba(124,58,237,0.1));padding:6px 10px;border-radius:999px;font-size:12px;color:var(--muted)}
+
+  </style>
+</head>
+<body>
+  <div class="game" role="application" aria-label="Interactive story game">
+    <main class="main">
+      <header>
+        <div>
+          <h1>Voyage of Choices</h1>
+          <div class="meta">A tiny branching tale — your choices matter</div>
+        </div>
+        <div class="title-badge">Replayable • Multiple endings</div>
+      </header>
+
+      <section class="scene" id="scene">
+        <div class="narration" id="narration">Loading story...</div>
+
+        <div class="choices" id="choices"></div>
+
+      </section>
+
+      <footer>
+        Tip: Try different choices to discover new endings. Use the sidebar to jump back or restart.
+      </footer>
+    </main>
+
+    <aside class="sidebar">
+      <div class="panel">
+        <h3>Quick controls</h3>
+        <div class="controls">
+          <button class="btn" id="restartBtn">Restart</button>
+          <button class="btn" id="undoBtn">Undo</button>
+          <button class="btn" id="saveBtn">Save</button>
+          <button class="btn" id="loadBtn">Load</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Story progress</h3>
+        <div class="small">Current node: <span id="currentId">-</span></div>
+        <div style="height:12px"></div>
+        <h3>History</h3>
+        <div class="history" id="history"></div>
+      </div>
+
+      <div class="panel">
+        <h3>Endings found</h3>
+        <div class="small" id="endingsFound">None yet</div>
+      </div>
+
+    </aside>
+  </div>
+
+  <script>
+  
+    const story = {
+      start: {
+        id: 'start',
+        text: `You wake up in a small boat drifting on a silver sea. A purple storm brews on the horizon, and two islands appear in the distance: one shrouded in vines, the other crowned with white stone.\n\nWhat do you do?`,
+        choices: [
+          { text: 'Head toward the vine-covered island', next: 'vines' },
+          { text: 'Row to the white-stone island', next: 'stone' },
+          { text: 'Stay on the boat and wait', next: 'wait' }
+        ]
+      },
+      vines: {
+        id: 'vines',
+        text: `The island is humid and alive. Strange plants hum softly. At the shore you discover a lantern hung from a carved post and a narrow path that disappears into green darkness.\n\nWhat do you choose?`,
+        choices: [
+          { text: 'Take the lantern and follow the path', next: 'lantern' },
+          { text: 'Search the shoreline for supplies', next: 'shore' },
+          { text: 'Run back to your boat', next: 'start' }
+        ]
+      },
+      stone: {
+        id: 'stone',
+        text: `The white-stone city is empty but immaculate, as if its inhabitants left only moments ago. In the plaza you find a glimmering coin and a locked gate leading deeper into the city.\n\nWhat do you do?`,
+        choices: [
+          { text: 'Pick up the glimmering coin', next: 'coin' },
+          { text: 'Try to open the locked gate', next: 'gate' },
+          { text: 'Climb the city walls to look around', next: 'walls' }
+        ]
+      },
+      wait: {
+        id: 'wait',
+        text: `Time passes slowly. The storm grows nearer and the sea churns. A bottle bobs beside your boat with a rolled note inside.\n\nDo you open it?`,
+        choices: [
+          { text: 'Open the bottle', next: 'note' },
+          { text: 'Ignore it and paddle for shore', next: 'start' },
+        ]
+      },
+      lantern: {
+        id: 'lantern',
+        text: `The lantern reveals a hidden grove where flowers glow. A small, fox-like creature offers you a choice: a warm map that shows secret places, or a single wish.\n\nWhich do you accept?`,
+        choices: [
+          { text: 'Take the map', next: 'map' },
+          { text: 'Ask for a wish', next: 'wish' },
+        ]
+      },
+      shore: {
+        id: 'shore',
+        text: `You find rope, a cracked compass, and a strange seed pulsing with light. As you examine the seed, a voice says it can grow into either a bridge or a guardian.\n\nWhat will you choose?`,
+        choices: [
+          { text: 'Plant the seed to grow a bridge', next: 'bridge' },
+          { text: 'Keep the seed as a guardian', next: 'guardian' },
+        ]
+      },
+      coin: {
+        id: 'coin',
+        text: `The coin hums and shows you a memory: the city once sheltered a library of wishes. The memory hints that wishes cost something. The locked gate has an inscription: 'Only truth may enter'.\n\nWhat do you do?`,
+        choices: [
+          { text: 'Speak a truth about yourself to the gate', next: 'truth' },
+          { text: 'Search for another way in', next: 'walls' },
+        ]
+      },
+      gate: {
+        id: 'gate',
+        text: `The gate resists. As you press, a face appears in the stone and asks one question: 'Why do you seek what is locked?'\n\nHow do you answer?`,
+        choices: [
+          { text: 'For knowledge', next: 'knowledge' },
+          { text: 'For power', next: 'power' },
+          { text: 'To find answers about home', next: 'home' },
+        ]
+      },
+      walls: {
+        id: 'walls',
+        text: `From the walls you spot faraway lights — other voyagers perhaps — and a path through the mountains behind the city. You also notice storm clouds gathering faster than before.\n\nChoose quickly.`,
+        choices: [
+          { text: 'Signal the distant lights', next: 'signal' },
+          { text: 'Head for the mountain path', next: 'mountain' },
+          { text: 'Return to the shore', next: 'start' },
+        ]
+      },
+
+      note: {
+        id: 'note',
+        text: `The note reads: 'When storms come, truth and courage steer the heart.' Below, a hastily drawn map shows both islands. You feel steadier.\n\nYou may now choose where to go.`,
+        choices: [
+          { text: 'Vine island', next: 'vines' },
+          { text: 'Stone island', next: 'stone' },
+        ]
+      },
+
+      map: {
+        id: 'map',
+        text: `The map reveals hidden paths — shortcuts and secret endings. Using it you bypass a dangerous marsh and arrive at a temple where a single golden door stands.\n\nWill you open it?`,
+        choices: [
+          { text: 'Open the golden door', next: 'goldendoor' },
+          { text: 'Keep exploring with the map', next: 'secret' },
+        ]
+      },
+      wish: {
+        id: 'wish',
+        text: `The fox listens and grants a small, honest wish: you may recall a memory that helps you now — but a random memory will go from your past.\n\nDo you accept?`,
+        choices: [
+          { text: 'Yes, accept the wish', next: 'memory' },
+          { text: 'No, decline', next: 'lantern' },
+        ]
+      },
+      bridge: {
+        id: 'bridge',
+        text: `The seed sprouts into a strong, living bridge that spans to a ruined tower. Inside you find a shrine with three gemstones: calm, courage, and cunning.\n\nPick one.`,
+        choices: [
+          { text: 'Calm', next: 'calm' },
+          { text: 'Courage', next: 'courage' },
+          { text: 'Cunning', next: 'cunning' },
+        ]
+      },
+      guardian: {
+        id: 'guardian',
+        text: `The seed unfurls into a small guardian that follows you. It can later help to open doors or confound enemies. For now it naps. You continue into the island and find a glowing pool.\n\nDo you drink from it?`,
+        choices: [
+          { text: 'Drink', next: 'drink' },
+          { text: 'Respectfully step away', next: 'respect' },
+        ]
+      },
+      truth: { id: 'truth', text: `You tell the gate a simple truth: 'I am afraid, but I would like to learn.' The gate slides open, revealing a small library with a single book: 'How to Be Whole'.\n      You may read it or leave.`, choices: [ {text:'Read the book', next:'readbook'}, {text:'Leave the city', next:'start'} ] },
+
+      knowledge: { id:'knowledge', text: `The face nods slowly and opens a sliver of the gate. Within you glimpse a hall of maps and archives. The face asks one final thing: 'Will you stay to study or carry knowledge home?'`, choices:[{text:'Stay to study', next:'study'},{text:'Carry knowledge home', next:'home'}] },
+      power: { id:'power', text:`The face tightens. The gate remains closed. When you insist, the stone warns that power without wisdom consumes. You are ejected back to your boat, changed.`, choices:[{text:'Accept the lesson and try again', next:'start'},{text:'Refuse and head to vines', next:'vines'}]},
+      home: { id:'home', text:`The gate opens to a mirror that shows your village. A warm voice says: 'Home is a path, not a place.' You feel resolve. This ending returns you to your boat with new purpose.`, choices:[{text:'Accept ending: Return home', next:'ending_home'},{text:'Stay and explore more', next:'study'}] },
+
+      signal: { id:'signal', text:`Your signal is answered by a small ship that guides you through storm-battered seas to safety. They invite you to travel with them — a life of voyages.`, choices:[{text:'Join them', next:'ending_traveller'},{text:'Politely decline', next:'start'}] },
+      mountain: { id:'mountain', text:`The mountain path leads to an ancient watchtower where a stargazer offers insight: 'Fate listens for choices.' They give you a telescope that reveals an ending.`, choices:[{text:'Use the telescope', next:'ending_fate'},{text:'Leave it and go back', next:'start'}] },
+
+      goldendoor: { id:'goldendoor', text:`Beyond the golden door a calm chamber holds a single puzzle. Solve it and a true ending awaits. The puzzle asks: 'What matters most?'`, choices:[{text:'Love', next:'ending_love'},{text:'Truth', next:'ending_truth'},{text:'Adventure', next:'ending_adventure'}] },
+      secret: { id:'secret', text:`Using the map you discover secret paths that lead to small, strange endings — a garden that remembers names, or a library that whispers jokes.`, choices:[{text:'Visit the garden', next:'ending_garden'},{text:'Find the joke library', next:'ending_joke'}] },
+
+      memory: { id:'memory', text:`A comforting memory returns — a warm kitchen and a promise kept. You feel lighter. With new strength you cross to the white city and the gate opens for you.`, choices:[{text:'Enter the city', next:'truth'},{text:'Seek other paths', next:'walls'}] },
+
+      drink: { id:'drink', text:`You drink; the pool shows visions and heals a hidden ache. The guardian wakes and bows. You realize this island is a place of healing.`, choices:[{text:'Rest here (ending)', next:'ending_heal'},{text:'Take the guardian and leave', next:'start'}]},
+      respect: { id:'respect', text:`You step away. Respect pleas go unnoticed, but the guardian grows fond and offers you a protective charm.`, choices:[{text:'Accept the charm', next:'charm'},{text:'Decline and leave', next:'start'}]},
+
+      calm: { id:'calm', text:`The gem of calm wards you against storms. You find a simple ending in serenity.`, choices:[{text:'Accept ending: Serenity', next:'ending_serenity'},{text:'Return', next:'start'}]},
+      courage: { id:'courage', text:`The courage gem burns bright. You face a final trial on a cliff and leap — finding a bold ending.`, choices:[{text:'Accept ending: Heroic', next:'ending_heroic'},{text:'Return', next:'start'}]},
+      cunning: { id:'cunning', text:`Cunning helps you solve a tricky riddle that unlocks a chest full of starlight — a clever ending.`, choices:[{text:'Accept ending: Clever', next:'ending_clever'},{text:'Return', next:'start'}]},
+
+      charm: { id:'charm', text:`The charm glows and reveals a hidden boat beneath seaweed — a quick travel ending.`, choices:[{text:'Sail away (ending)', next:'ending_sail'},{text:'Stay', next:'start'}]},
+
+      readbook: { id:'readbook', text:`The book teaches you a small ritual of contentment. When you perform it, you feel whole.`, choices:[{text:'Accept ending: Whole', next:'ending_whole'},{text:'Close the book and go', next:'start'}]},
+      study: { id:'study', text:`Years pass as you study. Knowledge becomes your companion. You become a keeper of maps and secrets.`, choices:[{text:'Accept ending: Scholar', next:'ending_scholar'},{text:'Return with knowledge', next:'start'}]},
+
+      ending_home: { id:'ending_home', text:'You return home with a calm heart. (Ending: Homecoming)', choices:[] },
+      ending_traveller: { id:'ending_traveller', text:'You become a traveller, learning new coasts and stories. (Ending: Traveller)', choices:[] },
+      ending_fate: { id:'ending_fate', text:'You glimpse threads of fate and accept your path. (Ending: Fate)', choices:[] },
+      ending_love: { id:'ending_love', text:'Love is chosen — the chamber blooms and you find a fulfilling ending. (Ending: Love)', choices:[] },
+      ending_truth: { id:'ending_truth', text:'Truth opens doors you could not imagine. (Ending: Truth)', choices:[] },
+      ending_adventure: { id:'ending_adventure', text:'You choose adventure and sail until stories are your wealth. (Ending: Adventure)', choices:[] },
+      ending_garden: { id:'ending_garden', text:'A small garden remembers your name and gives you peace. (Ending: Garden)', choices:[] },
+      ending_joke: { id:'ending_joke', text:'The library whispers jokes and you leave laughing. (Ending: Joke)', choices:[] },
+      ending_heal: { id:'ending_heal', text:'Healing completes you; you stay and help others. (Ending: Healing)', choices:[] },
+      ending_serenity: { id:'ending_serenity', text:'You settle into a life of calm. (Ending: Serenity)', choices:[] },
+      ending_heroic: { id:'ending_heroic', text:'Your bravery becomes legend. (Ending: Heroic)', choices:[] },
+      ending_clever: { id:'ending_clever', text:'Cleverness brings you a bright future. (Ending: Clever)', choices:[] },
+      ending_sail: { id:'ending_sail', text:'You sail away toward distant suns. (Ending: Sail)', choices:[] },
+      ending_whole: { id:'ending_whole', text:'You feel whole. (Ending: Whole)', choices:[] },
+      ending_scholar: { id:'ending_scholar', text:'You become a scholar and keeper of tales. (Ending: Scholar)', choices:[] },
+    };
+
+
+    let current = 'start';
+    let history = [];
+    let endings = new Set();
+
+
+    const narrationEl = document.getElementById('narration');
+    const choicesEl = document.getElementById('choices');
+    const historyEl = document.getElementById('history');
+    const currentIdEl = document.getElementById('currentId');
+    const endingsFoundEl = document.getElementById('endingsFound');
+
+ 
+    document.getElementById('restartBtn').addEventListener('click', restart);
+    document.getElementById('undoBtn').addEventListener('click', undo);
+    document.getElementById('saveBtn').addEventListener('click', saveGame);
+    document.getElementById('loadBtn').addEventListener('click', loadGame);
+
+    function render(){
+      const node = story[current];
+      if(!node) { narrationEl.textContent = 'This path is lost...'; choicesEl.innerHTML=''; return; }
+
+   
+      narrationEl.innerHTML = node.text.split('\n').map(p => `<p>${escapeHtml(p)}</p>`).join('');
+      choicesEl.innerHTML = '';
+
+      if(node.choices.length === 0){
+     
+        endings.add(node.id);
+        updateEndings();
+        const endNote = document.createElement('div');
+        endNote.className = 'small';
+        endNote.textContent = '★ This is an ending. Use Restart to play again.';
+        choicesEl.appendChild(endNote);
+      } else {
+        node.choices.forEach((c, idx) => {
+          const btn = document.createElement('button');
+          btn.className = 'choice';
+          btn.setAttribute('data-next', c.next);
+          btn.innerHTML = `<strong>${idx+1}.</strong> ${escapeHtml(c.text)}`;
+          btn.addEventListener('click', () => choose(c.next));
+          choicesEl.appendChild(btn);
+        });
+      }
+
+
+      currentIdEl.textContent = node.id;
+      renderHistory();
+    }
+
+    function choose(nextId){
+      history.push(current);
+      current = nextId;
+      render();
+    }
+
+    function restart(){ current = 'start'; history = []; render(); }
+    function undo(){ if(history.length===0) return; current = history.pop(); render(); }
+
+    function renderHistory(){
+      historyEl.innerHTML = '';
+      for(let i=0;i<history.length;i++){
+        const id = history[i];
+        const el = document.createElement('div');
+        el.className = 'hist-item';
+        el.textContent = `${i+1}. ${id}`;
+        historyEl.appendChild(el);
+      }
+    }
+
+    function updateEndings(){
+      if(endings.size === 0) endingsFoundEl.textContent = 'None yet';
+      else endingsFoundEl.textContent = Array.from(endings).join(', ');
+    }
+
+    function saveGame(){
+      const payload = { current, history:Array.from(history), endings:Array.from(endings) };
+      localStorage.setItem('voyage_save', JSON.stringify(payload));
+      alert('Game saved to local storage.');
+    }
+    function loadGame(){
+      const raw = localStorage.getItem('voyage_save');
+      if(!raw) { alert('No saved game found.'); return; }
+      try{
+        const obj = JSON.parse(raw);
+        current = obj.current || 'start';
+        history = obj.history || [];
+        endings = new Set(obj.endings || []);
+        render();
+        alert('Save loaded.');
+      }catch(e){ alert('Could not load save.'); }
+    }
+
+    function escapeHtml(s){ return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+ 
+    render();
+  </script>
+</body>
+</html>
